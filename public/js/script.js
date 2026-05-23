@@ -717,6 +717,14 @@ socket.on("nameChanged", ({ name }) => {
 
   userName = name;
 
+  // update top username display
+  const displayEl = document.getElementById("userNameDisplay");
+
+  if (displayEl) {
+    displayEl.textContent = `👤 ${name}`;
+    displayEl.style.display = "block";
+  }
+
   nameModal.style.display = "none";
 
   console.log("Name changed:", name);
