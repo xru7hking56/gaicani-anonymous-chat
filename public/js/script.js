@@ -713,7 +713,24 @@ function sendGif(fullUrl, previewUrl) {
 }
 
 socket.on("gif", (data) => addGifMessage(data.url, false));
+socket.on("nameChanged", ({ name }) => {
 
+  userName = name;
+
+  appendSystemMessage(`✅ You changed name to ${name}`);
+
+  nameModal.style.display = "none";
+});
+socket.on("partnerNameChanged", ({ name }) => {
+
+  appendSystemMessage(`ℹ️ Partner changed name to ${name}`);
+
+  const partnerNameEl = document.getElementById("partnerName");
+
+  if (partnerNameEl) {
+    partnerNameEl.textContent = name;
+  }
+});
 // ── Question button ───────────────────────────────────────────────────────────
 let questionBtnCooldown = false;
 
@@ -1370,8 +1387,28 @@ changeNameBtn.addEventListener("click", () => {
   setTimeout(() => nameInput.focus(), 50);
 });
 
-saveNameBtn.addEventListener("click", saveName);
-nameInput.addEventListener("keypress", (e) => { if (e.key === "Enter") saveName(); });
+saveNameBtn.addEventListener("click", () => {
+
+  const newName = nameInput.value.trim();
+
+  if (!newName) return;
+
+  // FIRST LOGIN
+  if (!userName) {
+
+    socket.emit("setName", {
+      name: newName,
+      token,
+      powAnswer,
+      webdriver: navigator.webdriver
+    });
+
+  } else {
+
+    // CHANGE EXISTING NAME
+    socket.emit("changeName", newName);
+  }
+});
 
 // ── Swipe-right gesture → Next (mobile) ──────────────────────────────────────
 let touchStartX = 0, touchStartY = 0;
