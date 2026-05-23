@@ -717,19 +717,19 @@ socket.on("nameChanged", ({ name }) => {
 
   userName = name;
 
-  appendSystemMessage(`✅ You changed name to ${name}`);
-
   nameModal.style.display = "none";
+
+  console.log("Name changed:", name);
 });
 socket.on("partnerNameChanged", ({ name }) => {
-
-  appendSystemMessage(`ℹ️ Partner changed name to ${name}`);
 
   const partnerNameEl = document.getElementById("partnerName");
 
   if (partnerNameEl) {
     partnerNameEl.textContent = name;
   }
+
+  console.log("Partner changed name:", name);
 });
 // ── Question button ───────────────────────────────────────────────────────────
 let questionBtnCooldown = false;
