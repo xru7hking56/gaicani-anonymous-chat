@@ -1,0 +1,673 @@
+/* ══════════════════════════════════════════════════════════════════
+   games.css — Mini-Games styles for GAICANI Chat
+   Append to (or @import into) your existing style.css
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Variables (inherit from main theme) ─────────────────────────── */
+:root {
+  --game-accent:   #5865f2;
+  --game-win:      #23a55a;
+  --game-lose:     #f23f42;
+  --game-draw:     #f0b232;
+  --game-surface:  #2b2d31;
+  --game-bg:       #1e1f22;
+  --game-border:   #1a1b1e;
+  --game-text:     #dcddde;
+  --game-muted:    #72767d;
+  --game-radius:   14px;
+  --game-shadow:   0 8px 32px rgba(0,0,0,.55);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   🎮  TOP-BAR BUTTON
+   ══════════════════════════════════════════════════════════════════ */
+.game-btn {
+  background: transparent;
+  border: none;
+  color: var(--game-text);
+  cursor: pointer;
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background 0.15s, transform 0.1s;
+  position: relative;
+}
+.game-btn:hover:not(:disabled) { background: rgba(88,101,242,.15); }
+.game-btn:active:not(:disabled){ transform: scale(0.95); }
+.game-btn:disabled              { opacity: 0.4; cursor: not-allowed; }
+
+.game-btn-icon { font-size: 1.1em; }
+
+/* Pulse animation when incoming game request */
+.game-btn--pulse .game-btn-icon {
+  animation: gameBtnPulse 0.7s ease-in-out infinite alternate;
+}
+@keyframes gameBtnPulse {
+  from { transform: scale(1);    filter: drop-shadow(0 0 0px #5865f2); }
+  to   { transform: scale(1.25); filter: drop-shadow(0 0 6px #5865f2); }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   📂  GAME MENU POPUP
+   ══════════════════════════════════════════════════════════════════ */
+.game-menu {
+  position: fixed;
+  top: 58px;          /* just below top-bar */
+  right: 10px;
+  z-index: 500;
+  width: 270px;
+  background: var(--game-surface);
+  border: 1px solid var(--game-border);
+  border-radius: var(--game-radius);
+  box-shadow: var(--game-shadow);
+  overflow: hidden;
+  animation: gameFadeIn 0.15s ease;
+}
+
+@keyframes gameFadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.game-menu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--game-border);
+}
+.game-menu-title {
+  font-size: 0.9em;
+  font-weight: 700;
+  color: var(--game-text);
+}
+.game-menu-close {
+  background: transparent;
+  border: none;
+  color: var(--game-muted);
+  cursor: pointer;
+  font-size: 1em;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.game-menu-close:hover { background: rgba(242,63,66,.15); color: #f23f42; }
+
+.game-menu-list { padding: 6px; }
+
+.game-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  color: var(--game-text);
+  cursor: pointer;
+  padding: 10px 12px;
+  text-align: left;
+  transition: background 0.15s, transform 0.1s;
+}
+.game-menu-item:hover  { background: rgba(88,101,242,.12); transform: translateX(3px); }
+.game-menu-item:active { transform: translateX(3px) scale(0.98); }
+
+.game-menu-icon {
+  font-size: 1.4em;
+  min-width: 36px;
+  text-align: center;
+}
+.game-menu-info strong { display: block; font-size: 0.9em; }
+.game-menu-info small  { color: var(--game-muted); font-size: 0.78em; }
+
+/* ══════════════════════════════════════════════════════════════════
+   📨  GAME INVITE BAR  (above chat input)
+   ══════════════════════════════════════════════════════════════════ */
+.game-invite-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: linear-gradient(90deg, rgba(88,101,242,.18), rgba(88,101,242,.08));
+  border-top: 1px solid rgba(88,101,242,.35);
+  flex-wrap: wrap;
+  animation: gameFadeIn 0.2s ease;
+}
+.game-invite-text   { font-size: 0.88em; color: var(--game-text); }
+.game-invite-text strong { color: #fff; }
+.game-invite-actions{ display: flex; gap: 8px; }
+
+.game-invite-accept,
+.game-invite-decline {
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.82em;
+  font-weight: 600;
+  padding: 5px 12px;
+  transition: filter 0.15s, transform 0.1s;
+}
+.game-invite-accept  { background: var(--game-win);  color: #fff; }
+.game-invite-decline { background: var(--game-lose); color: #fff; }
+.game-invite-accept:hover,
+.game-invite-decline:hover  { filter: brightness(1.15); }
+.game-invite-accept:active,
+.game-invite-decline:active { transform: scale(0.96); }
+
+/* ══════════════════════════════════════════════════════════════════
+   🖼  GAME OVERLAY WINDOW
+   ══════════════════════════════════════════════════════════════════ */
+.game-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: gameFadeIn 0.2s ease;
+  padding: 16px;
+}
+
+.game-window {
+  background: var(--game-surface);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,0.04);
+  width: 100%;
+  max-width: 380px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: gameSlideUp 0.25s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes gameSlideUp {
+  from { transform: translateY(30px) scale(0.95); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
+.game-window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--game-bg);
+  border-bottom: 1px solid var(--game-border);
+}
+.game-title {
+  font-size: 0.95em;
+  font-weight: 700;
+  color: var(--game-text);
+}
+.game-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--game-muted);
+  cursor: pointer;
+  font-size: 1.1em;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.game-close-btn:hover { background: rgba(242,63,66,.15); color: #f23f42; }
+
+.game-content {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-height: 200px;
+}
+
+/* ── Result panel ──────────────────────────────────────────── */
+.game-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+  border-top: 1px solid var(--game-border);
+  animation: gameFadeIn 0.25s ease;
+}
+.game-result--win  { background: rgba(35,165,90,.08);  }
+.game-result--lose { background: rgba(242,63,66,.08);  }
+.game-result--draw { background: rgba(240,178,50,.08); }
+
+.game-result-emoji {
+  font-size: 2.8em;
+  line-height: 1;
+  animation: gameResultBounce 0.5s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes gameResultBounce {
+  from { transform: scale(0) rotate(-15deg); }
+  to   { transform: scale(1) rotate(0deg); }
+}
+.game-result-text {
+  font-size: 1.15em;
+  font-weight: 700;
+  color: var(--game-text);
+}
+.game-result-actions { display: flex; gap: 10px; margin-top: 4px; }
+
+.game-rematch-btn,
+.game-exit-btn {
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 600;
+  padding: 8px 18px;
+  transition: filter 0.15s, transform 0.1s;
+}
+.game-rematch-btn { background: linear-gradient(135deg, var(--game-accent) 0%, #4348d4 100%); color: #fff; box-shadow: 0 3px 12px rgba(88,101,242,0.4); }
+.game-exit-btn    { background: #383a40;            color: var(--game-text); }
+.game-rematch-btn:hover { filter: brightness(1.15); }
+.game-exit-btn:hover    { background: #404249; }
+.game-rematch-btn:active,
+.game-exit-btn:active   { transform: scale(0.96); }
+
+/* ══════════════════════════════════════════════════════════════════
+   ❌⭕  TIC TAC TOE
+   ══════════════════════════════════════════════════════════════════ */
+.ttt-status {
+  font-size: 0.9em;
+  color: var(--game-muted);
+  min-height: 22px;
+  text-align: center;
+}
+.ttt-status strong { color: var(--game-text); }
+
+.ttt-board {
+  display: grid;
+  grid-template-columns: repeat(3, 88px);
+  grid-template-rows:    repeat(3, 88px);
+  gap: 6px;
+}
+.ttt-cell {
+  background: var(--game-bg);
+  border: 2px solid var(--game-border);
+  border-radius: 10px;
+  color: var(--game-text);
+  cursor: pointer;
+  font-size: 2em;
+  font-weight: 700;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ttt-cell:hover:not(:disabled):not([data-val]) {
+  background: rgba(88,101,242,.12);
+  border-color: rgba(88,101,242,.4);
+}
+.ttt-cell:active:not(:disabled) { transform: scale(0.94); }
+.ttt-cell:disabled               { cursor: default; }
+
+.ttt-cell--x { color: #5865f2; }
+.ttt-cell--o { color: #f23f42; }
+
+.ttt-cell--winner {
+  background: rgba(240,178,50,.15) !important;
+  border-color: var(--game-draw) !important;
+  animation: winnerPop 0.35s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes winnerPop {
+  from { transform: scale(0.85); }
+  to   { transform: scale(1); }
+}
+
+.ttt-role-badge {
+  font-size: 0.82em;
+  color: var(--game-muted);
+}
+.ttt-role-symbol { font-size: 1.1em; }
+
+/* ══════════════════════════════════════════════════════════════════
+   ✊✋✌️  ROCK PAPER SCISSORS
+   ══════════════════════════════════════════════════════════════════ */
+.rps-status {
+  font-size: 0.9em;
+  color: var(--game-muted);
+  text-align: center;
+  min-height: 22px;
+}
+.rps-choices {
+  display: flex;
+  gap: 12px;
+}
+.rps-btn {
+  background: var(--game-bg);
+  border: 2px solid var(--game-border);
+  border-radius: 14px;
+  color: var(--game-text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 18px;
+  gap: 6px;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  min-width: 80px;
+}
+.rps-btn:hover:not(:disabled) {
+  background: rgba(88,101,242,.12);
+  border-color: rgba(88,101,242,.5);
+  transform: translateY(-4px);
+}
+.rps-btn:active:not(:disabled)  { transform: translateY(-2px) scale(0.96); }
+.rps-btn:disabled                { cursor: default; opacity: 0.6; }
+.rps-btn--selected {
+  border-color: var(--game-accent) !important;
+  background: rgba(88,101,242,.18) !important;
+  opacity: 1 !important;
+}
+.rps-emoji { font-size: 2em; line-height: 1; }
+.rps-label { font-size: 0.75em; color: var(--game-muted); }
+
+.rps-opponent-status {
+  font-size: 0.82em;
+  color: var(--game-muted);
+  text-align: center;
+  min-height: 18px;
+}
+
+.rps-reveal {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  animation: gameFadeIn 0.3s ease;
+}
+.rps-reveal-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.rps-reveal-emoji { font-size: 2.6em; }
+.rps-reveal-name  { font-size: 0.78em; color: var(--game-muted); }
+.rps-reveal-vs {
+  font-size: 1em;
+  font-weight: 700;
+  color: var(--game-muted);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   🔢  MATH DUEL
+   ══════════════════════════════════════════════════════════════════ */
+.math-status {
+  font-size: 0.88em;
+  color: var(--game-muted);
+  text-align: center;
+  min-height: 20px;
+}
+.math-question {
+  font-size: 2.2em;
+  font-weight: 800;
+  color: var(--game-text);
+  letter-spacing: 2px;
+  text-align: center;
+  padding: 10px 20px;
+  background: var(--game-bg);
+  border: 2px solid var(--game-border);
+  border-radius: 12px;
+  width: 100%;
+}
+.math-input-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.math-input {
+  flex: 1;
+  background: var(--game-bg);
+  border: 2px solid var(--game-border);
+  border-radius: 10px;
+  color: var(--game-text);
+  font-size: 1.2em;
+  padding: 8px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+  -moz-appearance: textfield;
+}
+.math-input::-webkit-outer-spin-button,
+.math-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.math-input:focus { border-color: var(--game-accent); }
+
+.math-submit-btn {
+  background: var(--game-accent);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 1.2em;
+  padding: 8px 16px;
+  transition: filter 0.15s, transform 0.1s;
+}
+.math-submit-btn:hover  { filter: brightness(1.15); }
+.math-submit-btn:active { transform: scale(0.94); }
+.math-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.math-feedback {
+  font-size: 0.85em;
+  min-height: 20px;
+  text-align: center;
+}
+.math-feedback--wrong {
+  color: var(--game-lose);
+  animation: shakeFeedback 0.35s ease;
+}
+@keyframes shakeFeedback {
+  0%,100% { transform: translateX(0); }
+  20%,60%  { transform: translateX(-5px); }
+  40%,80%  { transform: translateX(5px); }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   📱  RESPONSIVE
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Always constrain the game window so it never overflows viewport */
+.game-overlay {
+  padding: max(env(safe-area-inset-top, 0px), 12px)
+           max(env(safe-area-inset-right, 0px), 12px)
+           max(env(safe-area-inset-bottom, 0px), 12px)
+           max(env(safe-area-inset-left, 0px), 12px);
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.game-window {
+  max-height: calc(100dvh - 24px); /* dvh = dynamic viewport — adjusts with keyboard */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 520px) {
+  .game-menu { right: 6px; width: calc(100vw - 12px); max-width: 320px; }
+
+  /* Center vertically only when there's room; otherwise top-align */
+  .game-overlay {
+    align-items: flex-start;
+    padding-top: max(env(safe-area-inset-top, 0px), 8px);
+  }
+
+  .game-window {
+    max-width: 100%;
+    max-height: calc(100dvh - 16px);
+    border-radius: 14px;
+  }
+
+  .game-content {
+    padding: 14px;
+    gap: 12px;
+    min-height: unset;
+  }
+
+  /* Tic Tac Toe – scale cells to fit narrow screens */
+  .ttt-board {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows:    repeat(3, minmax(0, 1fr));
+    width: min(264px, calc(100vw - 60px));
+    height: min(264px, calc(100vw - 60px));
+    gap: 5px;
+  }
+  .ttt-cell {
+    font-size: 1.7em;
+    width: 100%;
+    height: 100%;
+  }
+
+  .rps-choices { gap: 8px; }
+  .rps-btn { padding: 10px 10px; min-width: 0; flex: 1; }
+  .rps-emoji { font-size: 1.7em; }
+
+  .math-question { font-size: 1.6em; letter-spacing: 1px; }
+
+  .game-btn .btn-label { display: none; }   /* icon-only on very small screens */
+
+  /* Result action buttons – stack on very narrow screens */
+  .game-result-actions { flex-wrap: wrap; justify-content: center; }
+  .game-rematch-btn,
+  .game-exit-btn { flex: 1; min-width: 100px; text-align: center; }
+}
+
+
+/* ══════════════════════════════════════════════════════
+   VOICE MESSAGE STYLES
+   ══════════════════════════════════════════════════════ */
+
+/* Mic button in input bar */
+.voice-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  flex-shrink: 0;
+  color: var(--text-muted, #949ba4);
+}
+.voice-btn:hover:not(:disabled) { background: rgba(255,255,255,0.07); }
+.voice-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Recording state */
+.voice-btn.recording {
+  background: rgba(237, 66, 69, 0.15);
+  color: #ed4245;
+  animation: mic-pulse 0.9s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.18); }
+}
+
+/* Recording overlay bar */
+#voiceRecordingBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(237, 66, 69, 0.12);
+  border-top: 1px solid rgba(237, 66, 69, 0.25);
+  font-size: 0.82rem;
+  color: #ed4245;
+}
+#voiceRecordingBar .voice-rec-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #ed4245;
+  animation: mic-pulse 0.9s ease-in-out infinite;
+  flex-shrink: 0;
+}
+#voiceRecordingBar .voice-rec-timer { font-variant-numeric: tabular-nums; font-weight: 600; }
+#voiceRecordingBar .voice-rec-label { flex: 1; }
+#voiceRecordingBar .voice-rec-cancel {
+  background: none; border: none; cursor: pointer;
+  color: #ed4245; font-size: 1rem; padding: 2px 4px;
+  border-radius: 4px;
+}
+#voiceRecordingBar .voice-rec-cancel:hover { background: rgba(237,66,69,0.15); }
+
+/* Voice message bubble */
+.voice-message-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: min(75%, 320px);
+  margin: 4px 0;
+}
+.voice-message-wrapper.you  { align-self: flex-end; align-items: flex-end; }
+.voice-message-wrapper.partner { align-self: flex-start; align-items: flex-start; }
+
+.voice-bubble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: var(--bubble-partner, #2b2d31);
+  max-width: 280px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.voice-message-wrapper.you .voice-bubble {
+  background: var(--bubble-you, #5865f2);
+  flex-direction: row-reverse;
+}
+
+.voice-play-btn {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.voice-play-btn:hover { background: rgba(255,255,255,0.28); }
+.voice-play-btn.playing { background: rgba(255,255,255,0.3); }
+
+.voice-waveform {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+}
+.voice-waveform span {
+  display: inline-block;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.55);
+  transition: background 0.15s;
+}
+/* Animated waveform bars — heights are randomized inline via JS */
+.voice-waveform.playing span {
+  animation: waveform-bounce 0.6s ease-in-out infinite alternate;
+}
+.voice-waveform.playing span:nth-child(odd)  { animation-delay: 0s; }
+.voice-waveform.playing span:nth-child(even) { animation-delay: 0.15s; }
+@keyframes waveform-bounce {
+  from { transform: scaleY(0.4); }
+  to   { transform: scaleY(1); }
+}
+
+.voice-duration {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.7);
+  white-space: nowrap;
+  min-width: 28px;
+}
