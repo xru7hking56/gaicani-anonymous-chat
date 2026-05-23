@@ -1,10 +1,10 @@
 'use strict';
 
-const express   = require('express');
-const http      = require('http');
+const express    = require('express');
+const http       = require('http');
 const { Server } = require('socket.io');
-const crypto    = require('crypto');
-const path      = require('path');
+const crypto     = require('crypto');
+const path       = require('path');
 
 const app    = express();
 const server = http.createServer(app);
@@ -12,20 +12,22 @@ const io     = new Server(server, {
   cors: { origin: '*' },
   pingTimeout: 60000,
   pingInterval: 25000,
+  maxHttpBufferSize: 5e6, // 5 MB — needed for voice audio chunks
 });
 
-// ── Config ─────────────────────────────────────────────────────────────────────
-const PORT           = process.env.PORT || 3000;
-const BLOCK_LIMIT    = 10;
-const RECONNECT_TTL  = 30000; // 30 s reconnect window
+// ── Config ────────────────────────────────────────────────────────────────────
+const PORT          = process.env.PORT || 3000;
+const BLOCK_LIMIT   = 10;
+const RECONNECT_TTL = 30000; // 30 s reconnect window
 
-// ── In-memory stores ───────────────────────────────────────────────────────────
-const users        = new Map();   // socketId → userObj
-const nameIndex    = new Map();   // name (lower) → socketId
-const queue        = [];          // waiting socket ids
-const pairs        = new Map();   // socketId → partnerId
-const challenges   = new Map();   // token → { nonce, expires }
-const pendingRecon = new Map();   // name (lower) → { partnerId, timer, bio }
+// ── In-memory stores ──────────────────────────────────────────────────────────
+const users        = new Map(); // socketId → userObj
+const nameIndex    = new Map(); // name (lower) → socketId
+const queue        = [];        // waiting socket ids
+const pairs        = new Map(); // socketId → partnerId
+const challenges   = new Map(); // token → { nonce, expires }
+const pendingRecon = new Map(); // name (lower) → { partnerId, timer, bio }
+const gameRooms    = new Map(); // gameId → { type, players, state }
 
 // ── Random data ───────────────────────────────────────────────────────────────
 const FACTS = [
@@ -74,55 +76,58 @@ const QUESTIONS = [
   "What's the most adventurous thing you've ever done?",
 ];
 
-// ── API routes ────────────────────────────────────────────────────────────────
+// ── API ───────────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Challenge token (proof-of-work anti-bot)
 app.get('/api/challenge', (_req, res) => {
   const token = crypto.randomBytes(16).toString('hex');
   const nonce = Math.floor(Math.random() * 100000);
   challenges.set(token, { nonce, expires: Date.now() + 60000 });
-  // Clean up old tokens
   for (const [t, v] of challenges) if (v.expires < Date.now()) challenges.delete(t);
   res.json({ token, nonce });
 });
 
-// Random fact
 app.get('/api/random-fact', (_req, res) => {
   res.json({ fact: FACTS[Math.floor(Math.random() * FACTS.length)] });
 });
 
-// Random question
 app.get('/api/random-question', (_req, res) => {
   res.json({ question: QUESTIONS[Math.floor(Math.random() * QUESTIONS.length)] });
 });
 
-// GIF proxy (Tenor) — set TENOR_API_KEY env var for real GIFs
+// GIF proxy — uses Tenor v2.  Set TENOR_API_KEY env var.
+// Get a free key at https://tenor.com/developer/dashboard
 app.get('/api/gifs', async (req, res) => {
-  const TENOR_KEY = process.env.TENOR_API_KEY || '';
-  const q         = req.query.q || '';
-  if (!TENOR_KEY) {
-    // Return empty results if no key configured
-    return res.json({ results: [] });
-  }
+  const KLIPY_KEY = process.env.KLIPY_API_KEY || 'GNtnB78Y87TMg4nnafoaXntoaH7QDl6b77NQfg6ScXoXkMbNgAAfZNUCje5n1ONW';
+  const q         = (req.query.q || '').trim();
+
+  if (!KLIPY_KEY) return res.json({ results: [] });
+
   try {
-    const endpoint = q
-      ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q)}&key=${TENOR_KEY}&limit=20&media_filter=gif,tinygif`
-      : `https://tenor.googleapis.com/v2/featured?key=${TENOR_KEY}&limit=20&media_filter=gif,tinygif`;
-    const r    = await fetch(endpoint);
+    // 1. Swap the Google/Tenor URL for Klipy
+    const base   = 'https://api.klipy.com/v2'; 
+    const common = `key=${KLIPY_KEY}&limit=20&mediafilter=tinygif,gif&contentfilter=low`;
+    
+    const url    = q
+      ? `${base}/search?q=${encodeURIComponent(q)}&${common}`
+      : `${base}/featured?${common}`;
+
+    const r    = await fetch(url);
     const data = await r.json();
     res.json(data);
-  } catch {
+  } catch (err) {
+    console.error('Klipy error:', err.message);
     res.json({ results: [] });
   }
 });
 
-// Fallback for SPA routes
 app.get('/{*path}', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// FIX: only count users who have actually set their name
 function broadcastOnlineCount() {
   io.emit('onlineCount', users.size);
 }
@@ -138,7 +143,7 @@ function tryMatchQueue() {
     const idB = queue.shift();
     const uA  = users.get(idA);
     const uB  = users.get(idB);
-    if (!uA || !uB) continue; // stale entry — try next pair
+    if (!uA || !uB) continue;
 
     pairs.set(idA, idB);
     pairs.set(idB, idA);
@@ -148,7 +153,7 @@ function tryMatchQueue() {
   }
 }
 
-function disconnectPartner(socketId, reason) {
+function disconnectPartner(socketId) {
   const partnerId = pairs.get(socketId);
   if (!partnerId) return;
   pairs.delete(socketId);
@@ -157,46 +162,84 @@ function disconnectPartner(socketId, reason) {
   io.to(partnerId).emit('partnerDisconnected', { name: uSelf ? uSelf.name : '' });
 }
 
-// ── Game state ────────────────────────────────────────────────────────────────
-const gameRooms = new Map(); // gameId → { type, players: [id,id], state }
-
-function newTTTState() {
-  return { board: Array(9).fill(null), turn: 0 }; // turn index into players[]
+// ── Game helpers ──────────────────────────────────────────────────────────────
+function newTTTState(players) {
+  return {
+    board: Array(9).fill(null),
+    currentTurnSocketId: players[0], // X always goes first
+  };
 }
 
 function tttWinner(board) {
   const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
   for (const [a,b,c] of lines) {
-    if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+    if (board[a] && board[a] === board[b] && board[a] === board[c])
+      return { mark: board[a], line: [a,b,c] };
   }
   return null;
 }
 
 function generateMathQuestion() {
-  const ops  = ['+', '-', '*'];
-  const op   = ops[Math.floor(Math.random() * ops.length)];
+  const ops = ['+', '-', '*'];
+  const op  = ops[Math.floor(Math.random() * ops.length)];
   let a, b, answer;
-  if (op === '+') { a = Math.floor(Math.random()*50)+1; b = Math.floor(Math.random()*50)+1; answer = a+b; }
-  if (op === '-') { a = Math.floor(Math.random()*50)+10; b = Math.floor(Math.random()*a)+1; answer = a-b; }
-  if (op === '*') { a = Math.floor(Math.random()*12)+2; b = Math.floor(Math.random()*12)+2; answer = a*b; }
+  if (op === '+') { a = Math.floor(Math.random()*50)+1;  b = Math.floor(Math.random()*50)+1; answer = a+b; }
+  if (op === '-') { a = Math.floor(Math.random()*50)+10; b = Math.floor(Math.random()*a)+1;  answer = a-b; }
+  if (op === '*') { a = Math.floor(Math.random()*12)+2;  b = Math.floor(Math.random()*12)+2; answer = a*b; }
   return { display: `${a} ${op} ${b}`, answer };
 }
 
+function startGame(gameType, players) {
+  const gameId = `${gameType}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const [idA, idB] = players;
+
+  if (gameType === 'ttt') {
+    const state = newTTTState(players);
+    gameRooms.set(gameId, { type: gameType, players, state });
+    // FIX: emit "game:start" (matches client listener), include full state with currentTurnSocketId
+    io.to(idA).emit('game:start', {
+      gameId, gameType,
+      role: 'X',
+      opponentId: idB,
+      state: { board: state.board, currentTurnSocketId: state.currentTurnSocketId },
+    });
+    io.to(idB).emit('game:start', {
+      gameId, gameType,
+      role: 'O',
+      opponentId: idA,
+      state: { board: state.board, currentTurnSocketId: state.currentTurnSocketId },
+    });
+  } else if (gameType === 'rps') {
+    const state = { choices: {} };
+    gameRooms.set(gameId, { type: gameType, players, state });
+    players.forEach(id =>
+      io.to(id).emit('game:start', { gameId, gameType, opponentId: players.find(p => p !== id) })
+    );
+  } else if (gameType === 'math') {
+    const question = generateMathQuestion();
+    const state    = { question, answered: false };
+    gameRooms.set(gameId, { type: gameType, players, state });
+    players.forEach(id =>
+      io.to(id).emit('game:start', { gameId, gameType, opponentId: players.find(p => p !== id), state: { question } })
+    );
+  }
+}
+
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
-io.on('connection', (socket) => {
-  console.log(`[+] connect ${socket.id}`);
-  broadcastOnlineCount();
+io.on("connection", (socket) => {
+  console.log("CONNECTED:", socket.id);
+
+  socket.onAny((event, ...args) => {
+    console.log("EVENT:", event);
+  });
+  // NOTE: do NOT broadcastOnlineCount() here — user hasn't set name yet
 
   // ── setName ──────────────────────────────────────────────────────────────
   socket.on('setName', ({ name, token, powAnswer, webdriver }) => {
     if (webdriver) { socket.disconnect(); return; }
 
-    // Validate challenge token
     const ch = challenges.get(token);
-    if (!ch || ch.expires < Date.now()) {
-      socket.emit('tokenInvalid');
-      return;
-    }
+    if (!ch || ch.expires < Date.now()) { socket.emit('tokenInvalid'); return; }
     const expected = (ch.nonce * 31 + ch.nonce % 97);
     challenges.delete(token);
     if (powAnswer !== expected) { socket.emit('tokenInvalid'); return; }
@@ -206,7 +249,7 @@ io.on('connection', (socket) => {
 
     const key = trimmed.toLowerCase();
 
-    // Check for reconnect (same name re-joining within TTL)
+    // Check for name collision with a live socket
     const existing = nameIndex.get(key);
     if (existing && existing !== socket.id) {
       const existingSocket = io.sockets.sockets.get(existing);
@@ -214,36 +257,36 @@ io.on('connection', (socket) => {
         socket.emit('nameTaken');
         return;
       }
-      // Old socket is gone — take over the name
       users.delete(existing);
       nameIndex.delete(key);
     }
 
-    // Check pending reconnect (partner is waiting for us)
+    // Check pending reconnect
     const recon = pendingRecon.get(key);
     if (recon) {
       clearTimeout(recon.timer);
       pendingRecon.delete(key);
 
-      // Re-register user
       const userObj = { name: trimmed, bio: recon.bio || '', blocks: new Set(), blockCount: 0 };
       users.set(socket.id, userObj);
       nameIndex.set(key, socket.id);
+      broadcastOnlineCount();
 
-      const partnerId = recon.partnerId;
+      const partnerId  = recon.partnerId;
       const partnerObj = users.get(partnerId);
-
       if (partnerObj) {
         pairs.set(socket.id, partnerId);
         pairs.set(partnerId, socket.id);
         socket.emit('nameAccepted', trimmed);
         socket.emit('partnerRestored', { name: partnerObj.name });
         io.to(partnerId).emit('partnerReconnected', { name: trimmed });
-        return;
+      } else {
+        socket.emit('nameAccepted', trimmed);
       }
+      return;
     }
 
-    // Normal registration
+    // Fresh registration
     const userObj = { name: trimmed, bio: '', blocks: new Set(), blockCount: 0 };
     users.set(socket.id, userObj);
     nameIndex.set(key, socket.id);
@@ -251,7 +294,7 @@ io.on('connection', (socket) => {
     broadcastOnlineCount();
   });
 
-  // ── setBio ───────────────────────────────────────────────────────────────
+  // ── setBio ────────────────────────────────────────────────────────────────
   socket.on('setBio', (bio) => {
     const u = users.get(socket.id);
     if (u) u.bio = String(bio || '').slice(0, 60);
@@ -284,12 +327,10 @@ io.on('connection', (socket) => {
     const cleaned = String(text || '').trim().slice(0, 2000);
     if (!cleaned) return;
 
-    // Simple link detection — kick sender
     if (/https?:\/\/|www\./i.test(cleaned)) {
-      io.to(socket.id).emit('linkKicked');
+      socket.emit('linkKicked');
       io.to(partnerId).emit('partnerLinkKicked');
       disconnectPartner(socket.id);
-      removeFromQueue(socket.id);
       return;
     }
 
@@ -326,15 +367,24 @@ io.on('connection', (socket) => {
     if (partnerId) io.to(partnerId).emit('partnerQuestion', { text });
   });
 
+  // ── voice message (base64 audio) ──────────────────────────────────────────
+  // Client sends: { audioData: <base64 string>, duration: <seconds> }
+  socket.on('voiceMessage', ({ audioData, duration }) => {
+    const u = users.get(socket.id);
+    if (!u) return;
+    const partnerId = pairs.get(socket.id);
+    if (!partnerId) return;
+    // Basic size guard: base64 of 3 MB raw ≈ 4 MB string
+    if (!audioData || typeof audioData !== 'string' || audioData.length > 4_000_000) return;
+    const clampedDuration = Math.min(Number(duration) || 0, 120);
+    io.to(partnerId).emit('voiceMessage', { audioData, duration: clampedDuration });
+  });
+
   // ── blockUser ─────────────────────────────────────────────────────────────
   socket.on('blockUser', ({ targetName }) => {
     const u = users.get(socket.id);
     if (!u) return;
-
-    if (u.blockCount >= BLOCK_LIMIT) {
-      socket.emit('blockLimitReached');
-      return;
-    }
+    if (u.blockCount >= BLOCK_LIMIT) { socket.emit('blockLimitReached'); return; }
 
     const targetKey = String(targetName || '').toLowerCase();
     const targetId  = nameIndex.get(targetKey);
@@ -342,10 +392,8 @@ io.on('connection', (socket) => {
     u.blocks.add(targetKey);
     u.blockCount++;
 
-    // Disconnect from partner if it's the same person
     const partnerId = pairs.get(socket.id);
-    if (partnerId === targetId || (!targetId && partnerId)) {
-      const partnerObj = users.get(partnerId);
+    if (partnerId) {
       pairs.delete(socket.id);
       pairs.delete(partnerId);
       io.to(partnerId).emit('youWereBlocked', { name: u.name });
@@ -362,38 +410,21 @@ io.on('connection', (socket) => {
     io.to(partnerId).emit('game:invite', { gameType, fromId: socket.id, isRematch: false });
   });
 
-  socket.on('game:accept', ({ gameType, fromId }) => {
+  // FIX: client sends "game:response" (not "game:accept"/"game:decline")
+  socket.on('game:response', ({ accepted, gameType, toId }) => {
     const partnerId = pairs.get(socket.id);
-    if (!partnerId || partnerId !== fromId) return;
+    if (!partnerId || partnerId !== toId) return;
 
-    const gameId = `${gameType}_${socket.id}_${Date.now()}`;
-    const players = [fromId, socket.id];
-    let state;
-
-    if (gameType === 'ttt') {
-      state = newTTTState();
-      gameRooms.set(gameId, { type: gameType, players, state });
-      io.to(players[0]).emit('game:started', { gameId, gameType, role: 'X', yourTurn: true });
-      io.to(players[1]).emit('game:started', { gameId, gameType, role: 'O', yourTurn: false });
-    } else if (gameType === 'rps') {
-      state = { choices: {}, ready: 0 };
-      gameRooms.set(gameId, { type: gameType, players, state });
-      players.forEach(id => io.to(id).emit('game:started', { gameId, gameType }));
-    } else if (gameType === 'math') {
-      const question = generateMathQuestion();
-      state = { question, answered: false };
-      gameRooms.set(gameId, { type: gameType, players, state });
-      players.forEach(id => io.to(id).emit('game:started', { gameId, gameType, question }));
+    if (!accepted) {
+      io.to(toId).emit('game:declined');
+      return;
     }
-  });
 
-  socket.on('game:decline', ({ fromId }) => {
-    const partnerId = pairs.get(socket.id);
-    if (partnerId) io.to(fromId).emit('game:declined');
+    // Both are paired — start the game
+    startGame(gameType, [toId, socket.id]);
   });
 
   socket.on('game:move', (data) => {
-    // Find game this socket is in
     let room = null, gameId = null;
     for (const [gid, r] of gameRooms) {
       if (r.players.includes(socket.id)) { room = r; gameId = gid; break; }
@@ -404,43 +435,53 @@ io.on('connection', (socket) => {
     const opponentId = players.find(id => id !== socket.id);
 
     if (type === 'ttt') {
-      const { cell } = data;
-      if (typeof cell !== 'number') return;
-      if (players[state.turn] !== socket.id) return; // not your turn
-      if (state.board[cell]) return; // cell taken
-      const mark = state.turn === 0 ? 'X' : 'O';
-      state.board[cell] = mark;
-      const winner = tttWinner(state.board);
-      const draw   = !winner && state.board.every(c => c);
-      state.turn   = 1 - state.turn;
+      // FIX: client sends "index" not "cell"
+      const idx = data.index;
+      if (typeof idx !== 'number' || idx < 0 || idx > 8) return;
+      if (state.currentTurnSocketId !== socket.id) return;
+      if (state.board[idx]) return;
 
-      const update = { board: state.board, turn: state.turn };
-      if (winner) {
+      const mark = players[0] === socket.id ? 'X' : 'O';
+      state.board[idx] = mark;
+
+      const result = tttWinner(state.board);
+      const draw   = !result && state.board.every(c => c);
+
+      // Switch turn
+      state.currentTurnSocketId = opponentId;
+
+      const update = {
+        board: state.board,
+        currentTurnSocketId: state.currentTurnSocketId,
+      };
+
+      if (result) {
         update.winnerSocketId = socket.id;
+        update.winLine        = result.line;
         gameRooms.delete(gameId);
       } else if (draw) {
         update.draw = true;
         gameRooms.delete(gameId);
       }
+
       players.forEach(id => io.to(id).emit('game:update', update));
 
     } else if (type === 'rps') {
       const { choice } = data;
       if (!['rock','paper','scissors'].includes(choice)) return;
-      if (state.choices[socket.id]) return; // already chose
+      if (state.choices[socket.id]) return;
       state.choices[socket.id] = choice;
-      // Notify opponent that this player chose (but don't reveal)
+
       if (opponentId) io.to(opponentId).emit('game:update', { opponentChose: true });
 
       if (Object.keys(state.choices).length === 2) {
-        // Both chose — determine winner
         const [idA, idB] = players;
         const cA = state.choices[idA], cB = state.choices[idB];
         const beats = { rock: 'scissors', scissors: 'paper', paper: 'rock' };
         let winnerSocketId = null;
         if (cA !== cB) winnerSocketId = beats[cA] === cB ? idA : idB;
-        const result = { choices: state.choices, winnerSocketId, draw: !winnerSocketId };
-        players.forEach(id => io.to(id).emit('game:update', result));
+        const res = { choices: state.choices, winnerSocketId, draw: !winnerSocketId };
+        players.forEach(id => io.to(id).emit('game:update', res));
         gameRooms.delete(gameId);
       }
 
@@ -449,8 +490,8 @@ io.on('connection', (socket) => {
       const { answer } = data;
       if (answer === state.question.answer) {
         state.answered = true;
-        const result = { winnerSocketId: socket.id, answer, question: state.question };
-        players.forEach(id => io.to(id).emit('game:update', result));
+        const res = { winnerSocketId: socket.id, answer, question: state.question };
+        players.forEach(id => io.to(id).emit('game:update', res));
         gameRooms.delete(gameId);
       } else {
         socket.emit('game:update', { wrong: true });
@@ -467,7 +508,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', (reason) => {
     console.log(`[-] disconnect ${socket.id} (${reason})`);
     const u = users.get(socket.id);
-    if (!u) { broadcastOnlineCount(); return; }
+    if (!u) return; // never completed setName — no cleanup needed
 
     const key       = u.name.toLowerCase();
     const partnerId = pairs.get(socket.id);
@@ -475,7 +516,6 @@ io.on('connection', (socket) => {
     removeFromQueue(socket.id);
 
     if (partnerId) {
-      // Start reconnect grace period
       pairs.delete(socket.id);
       pairs.delete(partnerId);
 
@@ -488,7 +528,7 @@ io.on('connection', (socket) => {
       io.to(partnerId).emit('partnerReconnecting', { name: u.name });
     }
 
-    // Clean up any game rooms
+    // Clean up game rooms
     for (const [gameId, room] of gameRooms) {
       if (room.players.includes(socket.id)) {
         const opp = room.players.find(id => id !== socket.id);
