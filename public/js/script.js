@@ -1393,7 +1393,7 @@ saveNameBtn.addEventListener("click", () => {
 
   if (!newName) return;
 
-  // already registered -> rename only
+  // EXISTING USER -> RENAME
   if (userName) {
 
     socket.emit("changeName", newName);
@@ -1401,8 +1401,13 @@ saveNameBtn.addEventListener("click", () => {
     return;
   }
 
-  // ORIGINAL LOGIN FLOW
-  submitName();
+  // FIRST LOGIN
+  socket.emit("setName", {
+    name: newName,
+    token: _challengeToken,
+    powAnswer: _challengePow,
+    webdriver: !!navigator.webdriver,
+  });
 });
 
 // ── Swipe-right gesture → Next (mobile) ──────────────────────────────────────
