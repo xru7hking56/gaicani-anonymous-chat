@@ -294,6 +294,65 @@ io.on("connection", (socket) => {
     broadcastOnlineCount();
   });
 
+// ── changeName ───────────────────────────────────────────────────────────
+socket.on('changeName', (newName) => {
+
+  const user = users.get(socket.id);
+  if (!user) return;
+
+  const trimmed = (newName || '').trim().slice(0, 20);
+
+  if (!trimmed || trimmed.length < 2) {
+    socket.emit('nameError', 'Invalid name');
+    return;
+  }
+
+  const newKey = trimmed.toLowerCase();
+  const oldKey = user.name.toLowerCase();
+
+  // same name
+  if (newKey === oldKey) return;
+
+  // already used
+  const existing = nameIndex.get(newKey);
+
+  if (existing && existing !== socket.id) {
+
+    const existingSocket = io.sockets.sockets.get(existing);
+
+    if (existingSocket && existingSocket.connected) {
+      socket.emit('nameTaken');
+      return;
+    }
+
+    users.delete(existing);
+    nameIndex.delete(newKey);
+  }
+
+  // update name index
+  nameIndex.delete(oldKey);
+
+  user.name = trimmed;
+
+  nameIndex.set(newKey, socket.id);
+
+  // update self
+  socket.emit('nameChanged', {
+    name: trimmed
+  });
+
+  // update partner
+  const partnerId = pairs.get(socket.id);
+
+  if (partnerId) {
+    io.to(partnerId).emit('partnerNameChanged', {
+      name: trimmed
+    });
+  }
+
+  console.log(`NAME CHANGE: ${oldKey} -> ${newKey}`);
+});
+
   // ── setBio ────────────────────────────────────────────────────────────────
   socket.on('setBio', (bio) => {
     const u = users.get(socket.id);
